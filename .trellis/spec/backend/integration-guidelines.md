@@ -713,6 +713,225 @@ async def call_with_retry(url: str, data: dict, max_retries: int = 3):
 
 ---
 
+## Design Decisions
+
+### Decision 1: Independent TaskState per Platform
+
+**Context**: When adding DeepSeek registration to the existing OpenAI registration system, how should we manage task state?
+
+**Options Considered**:
+1. Single TaskState with platform-specific fields
+2. Independent TaskState instances per platform
+
+**Decision**: Use independent TaskState instances (e.g., `_deepseek_state = TaskState()`).
+
+**Why**:
+- Simplifies state management (each platform has independent locks, counters, stop events)
+- Avoids concurrency issues (tasks can run independently without state conflicts)
+- Easier to extend (new platforms just add a new TaskState instance)
+
+**Trade-offs**:
+- Slight memory overhead (multiple state objects)
+- No shared task history across platforms
+
+**Example**:
+```python
+# core/server.py
+
+# OpenAI task state
+_state = TaskState()
+
+# DeepSeek task state (independent)
+_deepseek_state = TaskState()
+
+@app.post("/api/deepseek/start")
+async def api_deepseek_start(req: DeepSeekStartRequest):
+    _deepseek_state.start_task(
+        proxy=req.proxy,
+        worker_count=req.worker_count,
+        target="deepseek"
+    )
+    return _deepseek_state.get_status_snapshot()
+```
+
+**Extensibility**: To add a new platform, create a new TaskState instance and corresponding API routes.
+
+---
+
+### Decision 2: Worker Loop Branching Pattern
+
+**Context**: How to maximize code reuse when supporting multiple registration platforms?
+
+**Options Considered**:
+1. Separate worker functions per platform
+2. Single worker function with internal branching
+
+**Decision**: Use single worker function with internal branching based on `target` parameter.
+
+**Why**:
+- Maximizes code reuse (EventEmitter, proxy pool, email provider routing)
+- Reduces duplication (start/stop logic, error handling identical)
+- Maintains consistency (all platforms use same task lifecycle)
+
+**Trade-offs**:
+- Slightly longer worker function
+- Need to ensure branch isolation
+
+**Example**:
+```python
+def _worker_loop(worker_id: int, target: str):
+    """Worker loop supports multiple platforms via branching."""
+    while not self.stop_event.is_set():
+        # Common setup: get email provider
+        provider_name, provider = mail_router.next_provider()
+        
+        if target == "deepseek":
+            # DeepSeek-specific logic
+            result = run_deepseek(
+                proxy=proxy,
+                emitter=emitter,
+                ds2api_config=ds2api_config
+            )
+        else:
+            # OpenAI-specific logic
+            token_json = run(
+                proxy=proxy,
+                emitter=emitter
+            )
+        
+        # Common cleanup: save results, update counters
+        ...
+```
+
+**When to Split**: If platform logic diverges significantly (>100 lines per branch), consider extracting to separate functions.
+
+---
+
+### Decision 3: Configuration Validation Before Save
+
+**Context**: ds2api configuration errors cause runtime failures during registration. How to provide early feedback?
+
+**Options Considered**:
+1. Validate on save (immediate feedback)
+2. Validate on first use (deferred feedback)
+
+**Decision**: Validate ds2api configuration immediately when saving.
+
+**Why**:
+- Better UX (users know immediately if config is wrong)
+- Prevents wasted work (registration doesn't start with invalid config)
+- Follows "fail fast" principle
+
+**Implementation**:
+```python
+@app.post("/api/deepseek/config")
+async def api_set_deepseek_config(req: DeepSeekConfigRequest):
+    # Validate before saving
+    if req.deepseek_ds2api_enabled:
+        test_result = await test_ds2api_connection(
+            req.deepseek_ds2api_url,
+            req.deepseek_ds2api_admin_key
+        )
+        if not test_result["ok"]:
+            raise HTTPException(400, f"ds2api 配置验证失败: {test_result['error']}")
+    
+    # Save config
+    cfg = _get_sync_config()
+    cfg.update({...})
+    _save_sync_config(cfg)
+    return {"status": "saved"}
+```
+
+**Trade-offs**:
+- Slight delay when saving (network round-trip)
+- External service dependency during config save
+
+**Alternative**: For non-critical configs, consider background validation with status display.
+
+---
+
+### Decision 4: CLI State via Environment Variable
+
+**Context**: How to pass target platform from CLI main entry to registration logic?
+
+**Options Considered**:
+1. Add `target` parameter to all function signatures
+2. Use environment variable (`DS_REGISTER_TARGET`)
+
+**Decision**: Use environment variable for simplicity and backward compatibility.
+
+**Why**:
+- Backward compatible (no function signature changes)
+- Simple to implement (read from `os.getenv`)
+- Easy to extend (new platforms add new env values)
+
+**Example**:
+```python
+# main.py
+parser.add_argument("--target", choices=["openai", "deepseek"], default="openai")
+args = parser.parse_args()
+os.environ["DS_REGISTER_TARGET"] = args.target
+
+# core/register.py
+def main():
+    target = os.getenv("DS_REGISTER_TARGET", "openai")
+    if target == "deepseek":
+        result = run_deepseek(...)
+    else:
+        result = run(...)
+```
+
+**Trade-offs**:
+- Implicit state passing (not visible in function signature)
+- Requires documentation for clarity
+
+**When to Prefer Parameters**: If the target affects many function signatures, consider explicit parameters instead.
+
+---
+
+## Exception Handling Patterns
+
+### Pattern: Specific Exception Types for External APIs
+
+**Problem**: Generic `except Exception` catches too much and hides root causes.
+
+**Solution**: Catch specific `httpx` exceptions with user-friendly messages.
+
+**Example**:
+```python
+import httpx
+
+async def test_ds2api_connection(url: str, admin_key: str) -> Dict[str, Any]:
+    try:
+        response = await httpx.post(
+            f"{url}/admin/import",
+            headers={"Authorization": f"Bearer {admin_key}"},
+            json={"accounts": []},
+            timeout=10.0
+        )
+        if response.status_code == 200:
+            return {"ok": True}
+        return {"ok": False, "error": f"HTTP {response.status_code}"}
+    
+    except httpx.TimeoutException:
+        return {"ok": False, "error": "连接超时 - 服务可能不可用"}
+    
+    except httpx.ConnectError:
+        return {"ok": False, "error": "连接失败 - 检查网络或代理"}
+    
+    except httpx.HTTPStatusError as e:
+        return {"ok": False, "error": f"HTTP 错误: {e.response.status_code}"}
+```
+
+**Why This Matters**:
+- Users get actionable error messages
+- Logs contain specific failure reasons
+- Easier debugging and support
+
+**Related**: See [Error Handling](./error-handling.md) for full patterns.
+
+---
+
 ## Integration Checklist
 
 When adding a new third-party platform integration, verify:

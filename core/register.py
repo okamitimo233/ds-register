@@ -17,6 +17,7 @@ import queue
 import tempfile
 from http.cookies import SimpleCookie
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, quote
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Callable
@@ -2439,33 +2440,87 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Detect target platform from environment variable (set by main.py)
+    target = os.getenv('DS_REGISTER_TARGET', 'openai').lower()
+
     sleep_min = max(1, args.sleep_min)
     sleep_max = max(sleep_min, args.sleep_max)
 
     count = 0
-    logger.info("OpenAI 账号池编排器 - CLI 模式")
+
+    if target == 'deepseek':
+        logger.info("DeepSeek 账号注册 - CLI 模式")
+    else:
+        logger.info("OpenAI 账号池编排器 - CLI 模式")
 
     while True:
         count += 1
-        logger.info("开始第 {} 次注册流程", count)
+
+        if target == 'deepseek':
+            logger.info("开始第 {} 次 DeepSeek 注册流程", count)
+        else:
+            logger.info("开始第 {} 次注册流程", count)
 
         try:
-            token_json = run(args.proxy)
+            if target == 'deepseek':
+                # DeepSeek registration
+                from .deepseek_register import run_deepseek
 
-            if token_json:
+                # Load ds2api config from sync_config.json if available
+                ds2api_config = None
                 try:
-                    t_data = json.loads(token_json)
-                    fname_email = t_data.get("email", "unknown").replace("@", "_")
-                except Exception:
-                    fname_email = "unknown"
-                    t_data = {}
+                    config_file = Path(__file__).parent.parent / "data" / "sync_config.json"
+                    if config_file.exists():
+                        with open(config_file, "r", encoding="utf-8") as f:
+                            cfg = json.load(f)
+                            ds2api_enabled = bool(cfg.get("deepseek_ds2api_enabled", False))
+                            ds2api_url = str(cfg.get("deepseek_ds2api_url", "") or "").strip()
+                            ds2api_admin_key = str(cfg.get("deepseek_ds2api_admin_key", "") or "").strip()
 
-                file_name = f"token_{fname_email}_{time.time_ns()}.json"
-                save_local_token_text(token_json, filename=file_name)
+                            if ds2api_enabled and ds2api_url and ds2api_admin_key:
+                                ds2api_config = {
+                                    "enabled": True,
+                                    "url": ds2api_url,
+                                    "admin_key": ds2api_admin_key,
+                                }
+                                logger.info("ds2api 上传已启用: {}", ds2api_url)
+                except Exception as e:
+                    logger.warning("读取 ds2api 配置失败: {}", e)
 
-                logger.success("Token 已保存至本地 SQLite 池: {}", file_name)
+                result = run_deepseek(
+                    proxy=args.proxy,
+                    emitter=_cli_emitter,
+                    ds2api_config=ds2api_config,
+                )
+
+                if result:
+                    logger.success(
+                        "DeepSeek 注册成功 - 邮箱: {}, 密码: {}, Token: {}..., 上传: {}",
+                        result.get("email"),
+                        result.get("password"),
+                        result.get("token", "")[:10],
+                        "是" if result.get("uploaded") else "否",
+                    )
+                else:
+                    logger.warning("本次 DeepSeek 注册失败。")
             else:
-                logger.warning("本次注册失败。")
+                # OpenAI registration
+                token_json = run(args.proxy)
+
+                if token_json:
+                    try:
+                        t_data = json.loads(token_json)
+                        fname_email = t_data.get("email", "unknown").replace("@", "_")
+                    except Exception:
+                        fname_email = "unknown"
+                        t_data = {}
+
+                    file_name = f"token_{fname_email}_{time.time_ns()}.json"
+                    save_local_token_text(token_json, filename=file_name)
+
+                    logger.success("Token 已保存至本地 SQLite 池: {}", file_name)
+                else:
+                    logger.warning("本次注册失败。")
 
         except Exception:
             logger.exception("CLI 运行时发生未捕获异常")

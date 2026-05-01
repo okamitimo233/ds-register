@@ -110,6 +110,17 @@
         <!-- 任务控制 -->
         <div class="panel-section">
           <div class="section-title">任务控制</div>
+          <div class="config-field">
+            <label>注册目标</label>
+            <select id="registerTarget">
+              <option value="openai">OpenAI</option>
+              <option value="deepseek">DeepSeek</option>
+            </select>
+          </div>
+          <div id="deepseekConfigHint" class="inline-hint" style="display: none;">
+            <span>DeepSeek ds2api 配置</span>
+            <span id="deepseekConfigStatus">未配置</span>
+          </div>
           <div class="toggle-row">
             <label class="ios-toggle-label" for="multithreadCheck">
               <span class="ios-toggle">
@@ -700,6 +711,47 @@
             <button id="sub2apiTestPoolBtn" class="btn btn-ghost btn-sm">测试连接</button>
             <button id="saveSyncConfigBtn" class="btn btn-primary btn-sm">保存</button>
             <span id="syncStatus" class="inline-status"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DeepSeek 上传配置 -->
+      <div class="config-card collapsible open">
+        <div class="collapsible-trigger">
+          <span>DeepSeek 上传配置</span>
+          <span class="collapse-icon">▶</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="config-block">
+            <div class="config-block-title has-tip">
+              <span>ds2api 平台配置</span>
+              <span class="config-tip" tabindex="0" aria-label="DeepSeek 注册账号自动上传到 ds2api 账号池。">
+                <span class="config-tip-icon" aria-hidden="true">i</span>
+                <span class="config-tip-bubble">DeepSeek 注册账号自动上传到 ds2api 账号池。</span>
+              </span>
+            </div>
+            <div class="toggle-row">
+              <label class="ios-toggle-label" for="deepseekDs2apiEnabled">
+                <span class="ios-toggle ios-toggle-sm">
+                  <input type="checkbox" id="deepseekDs2apiEnabled" />
+                  <span class="toggle-track"></span>
+                </span>
+                <span>启用 ds2api 上传</span>
+              </label>
+            </div>
+            <div class="config-field">
+              <label>ds2api 地址</label>
+              <input type="text" id="deepseekDs2apiUrl" value="" placeholder="http://localhost:8080" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="config-field">
+              <label>Admin Key</label>
+              <input type="password" id="deepseekDs2apiAdminKey" value="" autocomplete="off" placeholder="ds2api 管理员密钥" />
+            </div>
+          </div>
+          <div class="config-actions">
+            <button id="testDeepSeekDs2apiBtn" class="btn btn-ghost btn-sm">测试配置</button>
+            <button id="saveDeepSeekDs2apiBtn" class="btn btn-primary btn-sm">保存配置</button>
+            <span id="deepseekDs2apiStatus" class="inline-status"></span>
           </div>
         </div>
       </div>

@@ -345,6 +345,15 @@ document.addEventListener('DOMContentLoaded', () => {
     proxyPoolStatus: $('proxyPoolStatus'),
     saveProxyBtn: $('saveProxyBtn'),
     autoRegisterCheck: $('autoRegisterCheck'),
+    registerTarget: $('registerTarget'),
+    deepseekConfigHint: $('deepseekConfigHint'),
+    deepseekConfigStatus: $('deepseekConfigStatus'),
+    deepseekDs2apiEnabled: $('deepseekDs2apiEnabled'),
+    deepseekDs2apiUrl: $('deepseekDs2apiUrl'),
+    deepseekDs2apiAdminKey: $('deepseekDs2apiAdminKey'),
+    testDeepSeekDs2apiBtn: $('testDeepSeekDs2apiBtn'),
+    saveDeepSeekDs2apiBtn: $('saveDeepSeekDs2apiBtn'),
+    deepseekDs2apiStatus: $('deepseekDs2apiStatus'),
   });
 
   clearSub2ApiAccountKeywordInput();
@@ -360,6 +369,8 @@ document.addEventListener('DOMContentLoaded', () => {
   loadRuntimeConfig();
   loadProxyPoolConfig();
   loadMailConfig();
+  loadDeepSeekConfig();
+  handleRegisterTargetChange();
   initMailCheckboxes();
   pollSub2ApiPoolStatus();
   loadSub2ApiAccounts();
@@ -380,6 +391,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (DOM.saveRuntimeConfigBtn) DOM.saveRuntimeConfigBtn.addEventListener('click', saveRuntimeConfig);
   if (DOM.mailTestBtn) DOM.mailTestBtn.addEventListener('click', testMailConnection);
   if (DOM.mailSaveBtn) DOM.mailSaveBtn.addEventListener('click', saveMailConfig);
+  if (DOM.testDeepSeekDs2apiBtn) DOM.testDeepSeekDs2apiBtn.addEventListener('click', testDeepSeekDs2apiConfig);
+  if (DOM.saveDeepSeekDs2apiBtn) DOM.saveDeepSeekDs2apiBtn.addEventListener('click', saveDeepSeekDs2apiConfig);
+  if (DOM.registerTarget) DOM.registerTarget.addEventListener('change', handleRegisterTargetChange);
   if (DOM.poolCopyRtBtn) DOM.poolCopyRtBtn.addEventListener('click', copyAllRt);
   if (DOM.poolExportBtn) DOM.poolExportBtn.addEventListener('click', exportLocalTokens);
   if (DOM.poolImportBtn) DOM.poolImportBtn.addEventListener('click', triggerLocalTokenJsonImport);
@@ -1192,6 +1206,140 @@ async function saveProxy() {
 }
 
 // ==========================================
+// DeepSeek 配置管理
+// ==========================================
+
+async function testDeepSeekDs2apiConfig() {
+  const enabled = DOM.deepseekDs2apiEnabled ? DOM.deepseekDs2apiEnabled.checked : false;
+  const url = DOM.deepseekDs2apiUrl ? DOM.deepseekDs2apiUrl.value.trim() : '';
+  const admin_key = DOM.deepseekDs2apiAdminKey ? DOM.deepseekDs2apiAdminKey.value.trim() : '';
+
+  if (!url) {
+    showToast('请填写 ds2api 地址', 'error');
+    return;
+  }
+  if (!admin_key) {
+    showToast('请填写 Admin Key', 'error');
+    return;
+  }
+
+  if (DOM.testDeepSeekDs2apiBtn) DOM.testDeepSeekDs2apiBtn.disabled = true;
+  if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = '测试中...';
+
+  try {
+    const res = await fetch('/api/deepseek/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deepseek_ds2api_enabled: enabled,
+        deepseek_ds2api_url: url,
+        deepseek_ds2api_admin_key: admin_key,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('ds2api 配置验证通过', 'success');
+      if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = '验证通过';
+      updateDeepSeekConfigStatus(true);
+    } else {
+      const error = data.detail || '验证失败';
+      showToast(`配置验证失败: ${error}`, 'error');
+      if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = `验证失败: ${error}`;
+    }
+  } catch (e) {
+    showToast('测试请求失败: ' + e.message, 'error');
+    if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = '请求失败';
+  } finally {
+    if (DOM.testDeepSeekDs2apiBtn) DOM.testDeepSeekDs2apiBtn.disabled = false;
+  }
+}
+
+async function saveDeepSeekDs2apiConfig() {
+  const enabled = DOM.deepseekDs2apiEnabled ? DOM.deepseekDs2apiEnabled.checked : false;
+  const url = DOM.deepseekDs2apiUrl ? DOM.deepseekDs2apiUrl.value.trim() : '';
+  const admin_key = DOM.deepseekDs2apiAdminKey ? DOM.deepseekDs2apiAdminKey.value.trim() : '';
+
+  if (enabled && !url) {
+    showToast('请填写 ds2api 地址', 'error');
+    return;
+  }
+  if (enabled && !admin_key) {
+    showToast('请填写 Admin Key', 'error');
+    return;
+  }
+
+  if (DOM.saveDeepSeekDs2apiBtn) DOM.saveDeepSeekDs2apiBtn.disabled = true;
+  if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = '保存中...';
+
+  try {
+    const res = await fetch('/api/deepseek/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deepseek_ds2api_enabled: enabled,
+        deepseek_ds2api_url: url,
+        deepseek_ds2api_admin_key: admin_key,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('ds2api 配置已保存', 'success');
+      if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = '已保存';
+      updateDeepSeekConfigStatus(enabled && url && admin_key);
+      if (DOM.deepseekDs2apiAdminKey) {
+        DOM.deepseekDs2apiAdminKey.value = '';
+        DOM.deepseekDs2apiAdminKey.placeholder = admin_key ? '已保存: ********' : '';
+      }
+    } else {
+      const error = data.detail || '保存失败';
+      showToast(`保存失败: ${error}`, 'error');
+      if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = `保存失败: ${error}`;
+    }
+  } catch (e) {
+    showToast('保存请求失败: ' + e.message, 'error');
+    if (DOM.deepseekDs2apiStatus) DOM.deepseekDs2apiStatus.textContent = '请求失败';
+  } finally {
+    if (DOM.saveDeepSeekDs2apiBtn) DOM.saveDeepSeekDs2apiBtn.disabled = false;
+  }
+}
+
+function updateDeepSeekConfigStatus(configured) {
+  if (DOM.deepseekConfigStatus) {
+    DOM.deepseekConfigStatus.textContent = configured ? '已配置' : '未配置';
+    DOM.deepseekConfigStatus.style.color = configured ? 'var(--success)' : 'var(--text-muted)';
+  }
+}
+
+async function loadDeepSeekConfig() {
+  try {
+    const res = await fetch('/api/sync-config');
+    if (res.ok) {
+      const data = await res.json();
+      const enabled = !!data.deepseek_ds2api_enabled;
+      const url = data.deepseek_ds2api_url || '';
+      const adminKeySet = !!(data.deepseek_ds2api_admin_key);
+
+      if (DOM.deepseekDs2apiEnabled) DOM.deepseekDs2apiEnabled.checked = enabled;
+      if (DOM.deepseekDs2apiUrl) DOM.deepseekDs2apiUrl.value = url;
+      if (DOM.deepseekDs2apiAdminKey && adminKeySet) {
+        DOM.deepseekDs2apiAdminKey.placeholder = '已保存: ********';
+      }
+
+      updateDeepSeekConfigStatus(enabled && url && adminKeySet);
+    }
+  } catch (e) {
+    console.error('加载 DeepSeek 配置失败:', e);
+  }
+}
+
+function handleRegisterTargetChange() {
+  const target = DOM.registerTarget ? DOM.registerTarget.value : 'openai';
+  if (DOM.deepseekConfigHint) {
+    DOM.deepseekConfigHint.style.display = target === 'deepseek' ? 'block' : 'none';
+  }
+}
+
+// ==========================================
 // 启动 / 停止任务
 // ==========================================
 function getRequestedWorkerCount() {
@@ -1203,8 +1351,11 @@ function getRequestedWorkerCount() {
 async function startTask() {
   const proxy = DOM.proxyInput.value.trim();
   const worker_count = getRequestedWorkerCount();
+  const target = DOM.registerTarget ? DOM.registerTarget.value : 'openai';
+
   try {
-    const res = await fetch('/api/start', {
+    const endpoint = target === 'deepseek' ? '/api/deepseek/start' : '/api/start';
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ proxy, worker_count }),
@@ -1216,15 +1367,18 @@ async function startTask() {
     }
     applyStatusSnapshot(data, { force: true });
     const workerMsg = worker_count > 1 ? ` (${worker_count} 线程)` : '';
-    showToast('注册任务已启动' + workerMsg, 'success');
+    const targetMsg = target === 'deepseek' ? 'DeepSeek' : '';
+    showToast(`${targetMsg}注册任务已启动${workerMsg}`, 'success');
   } catch (e) {
     showToast('启动请求失败: ' + e.message, 'error');
   }
 }
 
 async function stopTask() {
+  const target = DOM.registerTarget ? DOM.registerTarget.value : 'openai';
   try {
-    const res = await fetch('/api/stop', { method: 'POST' });
+    const endpoint = target === 'deepseek' ? '/api/deepseek/stop' : '/api/stop';
+    const res = await fetch(endpoint, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) {
       showToast(data.detail || '停止失败', 'error');

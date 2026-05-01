@@ -1520,13 +1520,19 @@ class TaskState:
         worker_count: int = 1,
         target_count: int = 0,
         sub2api_target_count: Optional[int] = None,
+        target: str = "openai",  # "openai" or "deepseek"
     ) -> None:
         sub2api_target = None if sub2api_target_count is None else max(0, int(sub2api_target_count))
         config_snapshot = _get_sync_config()
-        try:
-            mail_router = MultiMailRouter(config_snapshot)
-        except Exception as exc:
-            raise RuntimeError(str(exc)) from exc
+
+        # For DeepSeek, we don't need mail_router
+        mail_router = None
+        if target == "openai":
+            try:
+                mail_router = MultiMailRouter(config_snapshot)
+            except Exception as exc:
+                raise RuntimeError(str(exc)) from exc
+
         auto_sync_enabled = _is_auto_sync_enabled(config_snapshot)
 
         with self._task_lock:
@@ -1563,6 +1569,7 @@ class TaskState:
             self.completion_semantics = "requires_postprocess" if auto_sync_enabled else "registration_only"
             self._last_task_event_state = None
             self._last_stats_event_state = None
+            self._target_platform = target  # Store target platform
             self._emit_task_snapshot_locked(bump_revision=True)
 
         emitter = self._make_emitter(run_id=self.run_id)
@@ -1835,6 +1842,106 @@ class TaskState:
                     break
                 slot_should_release = True
                 count += 1
+
+                # Check if this is a DeepSeek registration task
+                if self._target_platform == "deepseek":
+                    attempt_emitter = worker_emitter.bind()
+                    attempt_emitter.info(
+                        f"{prefix}>>> 第 {count} 次 DeepSeek 注册 <<<",
+                        step="start",
+                        attempt=count,
+                    )
+                    try:
+                        from .deepseek_register import run_deepseek
+
+                        # Prepare ds2api config
+                        ds2api_config = None
+                        if config_snapshot.get("deepseek_ds2api_enabled"):
+                            ds2api_url = str(config_snapshot.get("deepseek_ds2api_url", "") or "").strip()
+                            ds2api_admin_key = str(config_snapshot.get("deepseek_ds2api_admin_key", "") or "").strip()
+                            if ds2api_url and ds2api_admin_key:
+                                ds2api_config = {
+                                    "enabled": True,
+                                    "url": ds2api_url,
+                                    "admin_key": ds2api_admin_key,
+                                }
+
+                        result = run_deepseek(
+                            proxy=proxy or None,
+                            emitter=attempt_emitter,
+                            stop_event=self.stop_event,
+                            proxy_pool_config={
+                                "enabled": bool(config_snapshot.get("proxy_pool_enabled", False)),
+                                "api_url": str(config_snapshot.get("proxy_pool_api_url", "")).strip(),
+                                "auth_mode": str(config_snapshot.get("proxy_pool_auth_mode", "query")).strip().lower(),
+                                "api_key": str(config_snapshot.get("proxy_pool_api_key", "")).strip(),
+                                "count": config_snapshot.get("proxy_pool_count", 1),
+                                "country": str(config_snapshot.get("proxy_pool_country", "US") or "US").strip().upper(),
+                                "fetch_retries": config_snapshot.get("proxy_pool_fetch_retries", 3),
+                                "bad_ttl_seconds": config_snapshot.get("proxy_pool_bad_ttl_seconds", 180),
+                                "tcp_check_enabled": bool(config_snapshot.get("proxy_pool_tcp_check_enabled", True)),
+                                "tcp_check_timeout_seconds": config_snapshot.get("proxy_pool_tcp_check_timeout_seconds", 1.2),
+                                "prefer_stable_proxy": bool(config_snapshot.get("proxy_pool_prefer_stable_proxy", True)),
+                                "stable_proxy": str(config_snapshot.get("proxy_pool_stable_proxy", "") or "").strip(),
+                            },
+                            ds2api_config=ds2api_config,
+                        )
+
+                        if self.stop_event.is_set() and not result:
+                            break
+
+                        if result:
+                            with self._task_lock:
+                                self.success_count += 1
+                                self.run_success_count += 1
+                                _save_state(self.success_count, self.fail_count)
+                                self.status = "running"
+                            attempt_emitter.success(
+                                f"{prefix}DeepSeek 注册成功 - 邮箱: {result.get('email')}, Token: {result.get('token', '')[:10]}...",
+                                step="saved",
+                                account_email=result.get("email"),
+                            )
+                            self.broadcast({
+                                "ts": datetime.now().strftime("%H:%M:%S"),
+                                "level": "success",
+                                "message": f"DeepSeek 注册成功: {result.get('email')}",
+                                "step": "saved",
+                                "worker_id": worker_id,
+                                "worker_label": worker_label,
+                                "attempt": count,
+                                "account_email": result.get("email"),
+                            })
+                            _apply_final_result(result.get("email", "unknown"), prefix, True)
+                            slot_should_release = False
+                        else:
+                            with self._task_lock:
+                                self.fail_count += 1
+                                self.run_fail_count += 1
+                                self.last_error = f"DeepSeek 注册失败: worker={worker_id}"
+                                _save_state(self.success_count, self.fail_count)
+                                self.status = "running"
+                            attempt_emitter.error(f"{prefix}DeepSeek 注册失败，稍后重试...", step="retry")
+
+                    except Exception as e:
+                        with self._task_lock:
+                            self.fail_count += 1
+                            self.run_fail_count += 1
+                            self.last_error = str(e)
+                            _save_state(self.success_count, self.fail_count)
+                        attempt_emitter.error(f"{prefix}DeepSeek 注册发生未捕获异常: {e}", step="runtime")
+                    finally:
+                        if slot_should_release:
+                            _release_target_slot()
+
+                    if self.stop_event.is_set():
+                        break
+
+                    wait = random.randint(5, 30)
+                    attempt_emitter.info(f"{prefix}休息 {wait} 秒后继续...", step="wait")
+                    self.stop_event.wait(wait)
+                    continue
+
+                # Original OpenAI registration logic
                 provider_name, provider = mail_router.next_provider()
                 attempt_emitter = worker_emitter.bind(mail_provider=provider_name)
                 attempt_emitter.info(
@@ -2006,6 +2113,7 @@ class TaskState:
 
 
 _state = TaskState()
+_deepseek_state = TaskState()  # Separate state for DeepSeek registration tasks
 
 
 def request_service_shutdown(*, wait_for_idle: bool = True) -> None:
@@ -2162,6 +2270,209 @@ async def api_stop() -> Dict[str, Any]:
         raise HTTPException(status_code=409, detail="没有正在运行的任务")
     _state.stop_task()
     return _state.get_status_snapshot()
+
+
+# ==========================================
+# DeepSeek Registration APIs
+# ==========================================
+
+
+class DeepSeekConfigRequest(BaseModel):
+    deepseek_ds2api_enabled: bool = False
+    deepseek_ds2api_url: str = ""
+    deepseek_ds2api_admin_key: str = ""
+
+
+class DeepSeekStartRequest(BaseModel):
+    proxy: str = ""
+    worker_count: int = 1
+
+
+async def _test_ds2api_connection(url: str, admin_key: str) -> Dict[str, Any]:
+    """Test ds2api connection and authentication."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{url}/admin/import",
+                headers={"Authorization": f"Bearer {admin_key}"},
+                json={"accounts": []},  # Empty list to test connection
+            )
+            if resp.status_code == 200:
+                return {"ok": True}
+            else:
+                return {"ok": False, "error": f"HTTP {resp.status_code}"}
+    except httpx.TimeoutException:
+        return {"ok": False, "error": "连接超时"}
+    except httpx.ConnectError as e:
+        return {"ok": False, "error": f"连接失败: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        return {"ok": False, "error": f"HTTP 错误: {str(e)}"}
+    except Exception as e:
+        return {"ok": False, "error": f"未知错误: {str(e)}"}
+
+
+@app.post("/api/deepseek/config")
+async def api_set_deepseek_config(req: DeepSeekConfigRequest) -> Dict[str, Any]:
+    """Save DeepSeek ds2api configuration with validation."""
+    # Validate configuration if enabled
+    if req.deepseek_ds2api_enabled:
+        if not req.deepseek_ds2api_url.strip():
+            raise HTTPException(status_code=400, detail="ds2api URL 不能为空")
+        if not req.deepseek_ds2api_admin_key.strip():
+            raise HTTPException(status_code=400, detail="ds2api Admin Key 不能为空")
+
+        # Test connection
+        test_result = await _test_ds2api_connection(
+            req.deepseek_ds2api_url.strip(),
+            req.deepseek_ds2api_admin_key.strip()
+        )
+        if not test_result["ok"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ds2api 配置验证失败: {test_result['error']}"
+            )
+
+    # Save configuration
+    cfg = _get_sync_config()
+    cfg["deepseek_ds2api_enabled"] = req.deepseek_ds2api_enabled
+    cfg["deepseek_ds2api_url"] = req.deepseek_ds2api_url.strip()
+    cfg["deepseek_ds2api_admin_key"] = req.deepseek_ds2api_admin_key.strip()
+    _save_sync_config(cfg)
+
+    return {
+        "status": "saved",
+        "validated": req.deepseek_ds2api_enabled,
+    }
+
+
+@app.post("/api/deepseek/start")
+async def api_deepseek_start(req: DeepSeekStartRequest) -> Dict[str, Any]:
+    """Start DeepSeek registration task."""
+    try:
+        _deepseek_state.start_task(req.proxy, req.worker_count, target="deepseek")
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    snapshot = _deepseek_state.get_status_snapshot()
+    return {
+        "run_id": snapshot["task"].get("run_id"),
+        "task": snapshot["task"],
+        "runtime": snapshot["runtime"],
+        "stats": snapshot["stats"],
+        "server_time": snapshot["server_time"],
+    }
+
+
+@app.post("/api/deepseek/stop")
+async def api_deepseek_stop() -> Dict[str, Any]:
+    """Stop DeepSeek registration task."""
+    if not _deepseek_state.has_live_run():
+        raise HTTPException(status_code=409, detail="没有正在运行的 DeepSeek 任务")
+    _deepseek_state.stop_task()
+    return _deepseek_state.get_status_snapshot()
+
+
+@app.get("/api/deepseek/status")
+async def api_deepseek_status() -> Dict[str, Any]:
+    """Get DeepSeek task status."""
+    return _deepseek_state.get_status_snapshot()
+
+
+@app.post("/api/deepseek/retry-failed")
+async def api_deepseek_retry_failed() -> Dict[str, Any]:
+    """Retry failed ds2api uploads."""
+    from . import DATA_DIR
+    from curl_cffi import requests as cffi_req
+
+    failed_file = DATA_DIR / "deepseek_failed_uploads.json"
+    if not failed_file.exists():
+        return {"total": 0, "success": 0, "failed": 0, "message": "没有失败的上传记录"}
+
+    try:
+        with open(failed_file, "r", encoding="utf-8") as f:
+            failed_accounts = json.load(f)
+    except Exception as e:
+        return {"total": 0, "success": 0, "failed": 0, "error": str(e)}
+
+    if not isinstance(failed_accounts, list) or not failed_accounts:
+        return {"total": 0, "success": 0, "failed": 0, "message": "没有失败的上传记录"}
+
+    cfg = _get_sync_config()
+    ds2api_url = str(cfg.get("deepseek_ds2api_url", "") or "").strip()
+    admin_key = str(cfg.get("deepseek_ds2api_admin_key", "") or "").strip()
+
+    if not ds2api_url or not admin_key:
+        raise HTTPException(status_code=400, detail="ds2api 配置不完整，无法重试")
+
+    success_count = 0
+    failed_count = 0
+    retry_results = []
+
+    for account in failed_accounts:
+        if not isinstance(account, dict):
+            failed_count += 1
+            continue
+
+        email = str(account.get("email") or "").strip()
+        password = str(account.get("password") or "").strip()
+
+        if not email or not password:
+            failed_count += 1
+            continue
+
+        try:
+            resp = await run_in_threadpool(
+                lambda: cffi_req.post(
+                    f"{ds2api_url}/admin/import",
+                    headers={
+                        "Authorization": f"Bearer {admin_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "accounts": [{
+                            "email": email,
+                            "password": password,
+                            "name": f"Retry {email}",
+                            "remark": f"Retried at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                        }]
+                    },
+                    timeout=20,
+                )
+            )
+
+            if resp.status_code == 200:
+                upload_data = resp.json()
+                imported = int(upload_data.get("imported_accounts") or 0)
+                if imported > 0:
+                    success_count += 1
+                    retry_results.append({"email": email, "status": "success"})
+                else:
+                    failed_count += 1
+                    retry_results.append({"email": email, "status": "duplicate"})
+            else:
+                failed_count += 1
+                retry_results.append({"email": email, "status": "failed", "error": f"HTTP {resp.status_code}"})
+        except Exception as e:
+            failed_count += 1
+            retry_results.append({"email": email, "status": "failed", "error": str(e)})
+
+    # Remove successful uploads from failed list
+    if success_count > 0:
+        remaining_failed = [
+            acc for acc, result in zip(failed_accounts, retry_results)
+            if result.get("status") != "success"
+        ]
+        try:
+            with open(failed_file, "w", encoding="utf-8") as f:
+                json.dump(remaining_failed, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning("更新失败上传列表失败: {}", e)
+
+    return {
+        "total": len(failed_accounts),
+        "success": success_count,
+        "failed": failed_count,
+        "results": retry_results,
+    }
 
 
 @app.post("/api/proxy/save")

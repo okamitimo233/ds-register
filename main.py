@@ -30,6 +30,7 @@ def _shutdown_signal_values() -> list[int]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="OpenAI Pool Orchestrator 入口")
     parser.add_argument("--cli", action="store_true", help="运行 CLI 注册模式")
+    parser.add_argument("--target", choices=["openai", "deepseek"], default="openai", help="注册目标平台 (openai 或 deepseek)")
     parser.add_argument("--debug", dest="debug_logging", action="store_true", help="开启 DEBUG 日志")
     parser.add_argument("--no-debug", dest="debug_logging", action="store_false", help="关闭 DEBUG 日志")
     parser.add_argument("--reload", dest="reload_enabled", action="store_true", help="开启 Granian 热重载")
@@ -85,6 +86,14 @@ def run_cli(argv: Optional[Sequence[str]] = None) -> None:
         log_retention_days=settings.log_retention_days,
         force=True,
     )
+    parser = _build_parser()
+    args, remaining = parser.parse_known_args(cli_args)
+
+    # Pass target to register module
+    if hasattr(args, 'target'):
+        import os
+        os.environ['DS_REGISTER_TARGET'] = args.target
+
     get_logger(__name__).debug("切换到 CLI 模式: argv={}", cli_args)
     cli_main()
 

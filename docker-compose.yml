@@ -1,0 +1,16 @@
+services:
+  openai-pool:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: openai-pool-orchestrator:latest
+    container_name: openai-pool
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${OPENAI_POOL_PORT:-18421}:18421"
+    environment:
+      OPENAI_POOL_LISTEN_HOST: 0.0.0.0
+      OPENAI_POOL_LISTEN_PORT: 18421
+    volumes:
+      - ./data:/app/data

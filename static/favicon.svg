@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title>Pool Orchestrator Logo</title>
+  <desc>Hub-and-node orchestration mark for the Pool Orchestrator interface.</desc>
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08131f" />
+      <stop offset="0.56" stop-color="#0b1b2a" />
+      <stop offset="1" stop-color="#0d1624" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(19 15) rotate(40) scale(26 24)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity=".28" />
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="16" fill="url(#bg)" />
+  <rect x="1.5" y="1.5" width="61" height="61" rx="14.5" fill="none" stroke="#ffffff" stroke-opacity=".08" />
+  <circle cx="19" cy="15" r="19" fill="url(#glow)" />
+
+  <path d="M32 10L50 21V43L32 54L14 43V21Z" fill="none" stroke="#e2e8f0" stroke-opacity=".16" stroke-width="2" />
+  <path d="M24 25L32 32L40 25" fill="none" stroke="#8ad8ff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M32 32V42" fill="none" stroke="#7cdbb8" stroke-width="4.5" stroke-linecap="round" />
+
+  <circle cx="24" cy="25" r="6.5" fill="#38bdf8" />
+  <circle cx="40" cy="25" r="6.5" fill="#34d399" />
+  <circle cx="32" cy="42" r="6.5" fill="#fb923c" />
+
+  <circle cx="22.2" cy="23.1" r="1.25" fill="#ffffff" fill-opacity=".92" />
+  <circle cx="38.2" cy="23.1" r="1.25" fill="#ffffff" fill-opacity=".92" />
+  <circle cx="30.5" cy="40.1" r="1.25" fill="#ffffff" fill-opacity=".92" />
+
+  <circle cx="32" cy="32" r="10.5" fill="#08131f" fill-opacity=".72" stroke="#f8fafc" stroke-opacity=".16" stroke-width="2" />
+  <circle cx="32" cy="32" r="5.8" fill="#dcfce7" />
+  <circle cx="32" cy="32" r="2.3" fill="#16a34a" />
+</svg>

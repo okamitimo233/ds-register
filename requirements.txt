@@ -1,0 +1,7 @@
+fastapi>=0.110
+granian[reload,pname]==2.5.2
+curl-cffi>=0.6
+aiohttp>=3.9
+loguru==0.7.3
+httpx==0.28.1
+pytest==9.0.2

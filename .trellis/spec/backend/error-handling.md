@@ -257,6 +257,131 @@ if not token:
 
 ---
 
+## External API Error Handling
+
+### Pattern for Third-Party API Calls
+
+When calling external APIs (e.g., DeepSeek, ds2api), use comprehensive error handling:
+
+```python
+from core.logger import app_logger
+import curl_cffi.requests as requests
+
+logger = app_logger.bind(component="deepseek_register")
+
+async def call_external_api(url: str, data: dict, headers: dict) -> dict:
+    """Call external API with comprehensive error handling."""
+    try:
+        response = requests.post(
+            url,
+            json=data,
+            headers=headers,
+            impersonate="chrome",
+            timeout=60
+        )
+        
+        # Check HTTP status
+        if response.status_code >= 400:
+            error_detail = response.text[:200]  # Limit error message length
+            logger.error("API request failed", extra={
+                "url": url,
+                "status": response.status_code,
+                "error": error_detail
+            })
+            raise RuntimeError(f"API error {response.status_code}: {error_detail}")
+        
+        # Parse response
+        result = response.json()
+        logger.success("API request succeeded", extra={"url": url})
+        return result
+        
+    except requests.exceptions.Timeout:
+        logger.error("API request timeout", extra={"url": url})
+        raise RuntimeError("Request timeout - service may be unavailable")
+    
+    except requests.exceptions.ConnectionError as e:
+        logger.error("API connection failed", extra={
+            "url": url,
+            "error": str(e)[:200]
+        })
+        raise RuntimeError("Connection failed - check network or proxy")
+    
+    except json.JSONDecodeError as e:
+        logger.error("API response parse error", extra={
+            "url": url,
+            "error": str(e)
+        })
+        raise RuntimeError("Invalid response from server")
+```
+
+### Retry Mechanism Pattern
+
+For operations that may fail temporarily, implement retry with local caching:
+
+```python
+import json
+from pathlib import Path
+from datetime import datetime
+
+def save_failed_upload(account: dict, cache_file: str = "data/failed_uploads.json"):
+    """Save failed uploads for manual retry."""
+    cache_path = Path(cache_file)
+    
+    # Load existing failures
+    failed = []
+    if cache_path.exists():
+        with open(cache_path, "r") as f:
+            failed = json.load(f)
+    
+    # Add new failure with timestamp
+    failed.append({
+        **account,
+        "failed_at": datetime.now().isoformat(),
+        "reason": "Upload failed"
+    })
+    
+    # Save back
+    with open(cache_path, "w") as f:
+        json.dump(failed, f, indent=2)
+    
+    logger.warning("Account saved for manual retry", extra={
+        "email": account["email"],
+        "cache_file": cache_file
+    })
+
+async def upload_to_ds2api(account: dict, ds2api_url: str, admin_key: str) -> bool:
+    """Upload account to ds2api with failure caching."""
+    try:
+        response = await call_external_api(
+            f"{ds2api_url}/admin/import",
+            {"accounts": [account]},
+            {"Authorization": f"Bearer {admin_key}"}
+        )
+        
+        if response.get("imported_accounts", 0) > 0:
+            logger.success("Account uploaded to ds2api", extra={
+                "email": account["email"]
+            })
+            return True
+        else:
+            # Duplicate or no import
+            logger.warning("Account not imported (may be duplicate)", extra={
+                "email": account["email"]
+            })
+            return False
+            
+    except Exception as e:
+        logger.error("ds2api upload failed", extra={
+            "email": account["email"],
+            "error": str(e)
+        })
+        # Save for manual retry
+        save_failed_upload(account)
+        return False
+```
+
+---
+
 ## Error Context and Logging
 
 Always log errors with context before raising or handling:

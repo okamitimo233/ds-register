@@ -310,6 +310,88 @@ python -m pytest tests/
 
 ---
 
+## Sensitive Data Handling
+
+### Token and Secret Masking
+
+Always mask sensitive data in logs and console output:
+
+```python
+# ✅ Good: Mask sensitive tokens
+logger.info(f"Token obtained: {token[:10]}...")
+
+# ❌ Bad: Expose full token
+logger.info(f"Token obtained: {token}")
+```
+
+**Pattern for Token Display**:
+- Show first 10 characters only
+- Never log passwords, API keys, or full tokens
+- Use structured logging with sanitization when possible
+
+**Example**:
+```python
+def mask_token(token: str, show_chars: int = 10) -> str:
+    """Mask token for safe display."""
+    if not token or len(token) <= show_chars:
+        return "***"
+    return f"{token[:show_chars]}..."
+
+# Usage
+logger.info(f"DeepSeek token: {mask_token(result['token'])}")
+# Output: "DeepSeek token: sk-abc123xyz..."
+```
+
+---
+
+## Performance Optimization
+
+### numba JIT for Performance-Sensitive Code
+
+For computationally intensive operations (e.g., cryptography, hashing), use numba JIT compilation:
+
+**When to Use**:
+- Computationally expensive loops
+- Cryptographic operations
+- Mathematical algorithms with significant iteration
+
+**Pattern**:
+```python
+from numba import jit
+import numpy as np
+
+# JIT-compiled function for performance
+@jit(nopython=True)
+def compute_hash(data: np.ndarray) -> np.ndarray:
+    """JIT-accelerated hash computation."""
+    # Implementation
+    return result
+
+# Graceful fallback
+try:
+    from numba import jit
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    def jit(*args, **kwargs):
+        """Fallback: identity decorator."""
+        def decorator(func):
+            return func
+        return decorator
+```
+
+**Dependencies**:
+```txt
+# requirements.txt
+numba>=0.59.0  # Optional: JIT acceleration
+```
+
+**Performance Impact**:
+- Pure Python: ~30-60 seconds
+- With numba JIT: ~10-20 seconds (2-3x faster)
+
+---
+
 ## Common Mistakes to Avoid
 
 ### 1. Over-Engineering

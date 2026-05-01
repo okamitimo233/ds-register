@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/error-handling.md", "purpose": "错误处理规范，指导如何处理 ds2api 配置验证和注册失败"}
+{"file": ".trellis/spec/backend/integration-guidelines.md", "purpose": "第三方平台集成规范，指导 ds2api 集成"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "purpose": "代码质量规范，确保新增代码符合项目标准"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "purpose": "代码复用思考指南，识别可复用的 EventEmitter、TaskState 等模块"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "purpose": "跨层思考指南，确保 CLI/API/前端数据流一致"}

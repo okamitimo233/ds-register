@@ -1,0 +1,4 @@
+{"type": "spec", "path": "prd.md", "description": "DeepSeek 注册集成需求文档"}
+{"type": "code", "path": "core/deepseek_register.py", "description": "DeepSeek 注册主流程（待实现）"}
+{"type": "code", "path": "core/deepseek_pow.py", "description": "DeepSeek PoW 算法实现（待实现）"}
+{"type": "test", "path": "tests/test_deepseek_pow.py", "description": "PoW 算法单元测试（待实现）"}

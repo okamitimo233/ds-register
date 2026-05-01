@@ -1,0 +1,12 @@
+{"type": "spec", "path": "prd.md", "description": "DeepSeek 注册集成需求文档"}
+{"type": "spec", "path": "../05-01-research-ds2api-upload/prd.md", "description": "前置研究任务：ds2api 上传接口研究"}
+{"type": "research", "path": "research/ds2api-upload.md", "description": "ds2api 上传接口研究结果（待完成）"}
+{"type": "code", "path": "core/register.py", "description": "OpenAI 注册主流程，包含 EventEmitter、代理池、OAuth 逻辑"}
+{"type": "code", "path": "core/mail_providers.py", "description": "邮箱提供商抽象层，支持 Mail.tm/MoeMail/DuckMail/Cloudflare"}
+{"type": "code", "path": "core/token_health.py", "description": "OpenAI token 验证逻辑"}
+{"type": "code", "path": "core/local_tokens.py", "description": "本地 token 存储"}
+{"type": "code", "path": "core/server.py", "description": "FastAPI 服务、REST API、SSE 推送"}
+{"type": "external", "path": "E:\\ds2api\\pow\\README.md", "description": "ds2api PoW 算法说明文档"}
+{"type": "external", "path": "E:\\ds2api\\pow\\deepseek_hash.go", "description": "DeepSeekHashV1 算法实现（Go）"}
+{"type": "external", "path": "E:\\ds2api\\pow\\deepseek_pow.go", "description": "PoW 求解和 header 构建（Go）"}
+{"type": "external", "path": "E:\\ds-register\\report-2026-05-01-deepseek-v4-pro.md", "description": "DeepSeek 注册流程分析报告"}

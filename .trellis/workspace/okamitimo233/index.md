@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
+- **Total Sessions**: 2
 - **Last Active**: 2026-05-01
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~42 | Active |
+| `journal-1.md` | ~79 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-05-01 | 集成 DeepSeek 注册能力 | `fe6d04c`, `05569ca`, `ce63d1e`, `4b00a8d`, `8fdac5d` | `main` |
 | 1 | 2026-05-01 | Trellis 初始化和规范填充 | `3f660fe`, `d904b82`, `00c1eae` | `main` |
 <!-- @@@/auto:session-history -->
 

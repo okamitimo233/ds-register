@@ -23,6 +23,7 @@ dependencies = [
     "aiohttp>=3.9",
     "loguru>=0.7.3",
     "httpx>=0.28.1",
+    "numba>=0.59.0",
 ]
 
 [project.scripts]
@@ -40,3 +41,6 @@ openai_pool_orchestrator = ["static/**/*"]
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = ["pytest>=9.0.2"]

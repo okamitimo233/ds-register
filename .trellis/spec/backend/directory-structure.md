@@ -87,6 +87,80 @@ When adding new functionality:
 
 ---
 
+## Version Management
+
+### Version Consistency Convention
+
+**Rule**: The version number MUST be kept consistent between these two files:
+
+1. `pyproject.toml` - Project metadata version
+2. `core/__init__.py` - Runtime version constant (`__version__`)
+
+**Why**:
+- Ensures consistency between build metadata and runtime version
+- Prevents confusion when debugging version-specific issues
+- Maintains trust in version reporting
+
+**Example**:
+
+```toml
+# pyproject.toml
+[project]
+name = "openai-pool-orchestrator"
+version = "2.0.0"
+```
+
+```python
+# core/__init__.py
+__version__ = "2.0.0"  # Must match pyproject.toml
+```
+
+**When to update**:
+- Before release: update both files simultaneously
+- After merge: verify consistency if version was changed
+- On version mismatch: treat as a bug, fix immediately
+
+**Common mistake**:
+
+```python
+# ❌ Wrong: Only update pyproject.toml
+# pyproject.toml: version = "2.1.0"
+# core/__init__.py: __version__ = "2.0.0"  # Inconsistent!
+
+# ✅ Correct: Update both
+# pyproject.toml: version = "2.1.0"
+# core/__init__.py: __version__ = "2.1.0"  # Consistent
+```
+
+**Verification**:
+
+Add a test to verify version consistency:
+
+```python
+# tests/test_version.py
+import tomli
+from pathlib import Path
+
+def test_version_consistency():
+    """Verify version numbers match between pyproject.toml and core/__init__.py."""
+    # Read pyproject.toml
+    pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+    with open(pyproject_path, "rb") as f:
+        pyproject_data = tomli.load(f)
+    pyproject_version = pyproject_data["project"]["version"]
+    
+    # Read core/__init__.py
+    from core import __version__
+    
+    # Assert consistency
+    assert __version__ == pyproject_version, (
+        f"Version mismatch: pyproject.toml={pyproject_version}, "
+        f"core/__init__.py={__version__}"
+    )
+```
+
+---
+
 ## Examples
 
 ### Well-organized modules

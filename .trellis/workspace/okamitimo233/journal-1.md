@@ -111,3 +111,38 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 为项目创建完整的 README 文档
+
+**Date**: 2026-05-02
+**Task**: 为项目创建完整的 README 文档
+**Branch**: `main`
+
+### Summary
+
+创建 README.md 文档（437行，8个章节）；记录版本管理约定和 REST API 端点契约到 spec；修复版本号不一致问题
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `90d3653` | (see git log) |
+| `552c17c` | (see git log) |
+| `59a2d66` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
